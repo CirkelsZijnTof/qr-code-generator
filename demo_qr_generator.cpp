@@ -4,9 +4,9 @@
 
 int main()
 {
- 
-    //raylibsUtils DRAW;
+
     QRCode prototype;
+    BitPlacement placer(7);
 
     std::string test_easy_1 = "12345678901";
     std::string test_easy_2 = "123";
@@ -14,8 +14,9 @@ int main()
     std::string test_standard_1 = "https://www.qrcode.com/";
     std::string test_standard_2 = "https://www.youtube.com/watch?v=dQw4w9WgXcQ";
     std::string test_difficult = "Hello é€😃"; // Emoji: 4 bytes. Euro-sign: 3. é: 2. Standard char, 1.
-    
-    prototype.generate(test_easy_2);
+
+    //prototype.generate(test_easy_2);
+
 
     std::cin.get();
 
