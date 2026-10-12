@@ -10,6 +10,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
+#include <cmath>
 
 #include "raylib.h"
 
@@ -75,12 +76,19 @@ private:
             printRGBColored(RGB_red, "[ERROR] missing font");
         }
     };
+
+    // clears terminal screen
+    void clearTerminal() 
+    {
+        system("cls");
+    };
     
 public:
 
     raylibsUtils()
     {   
         
+        clearTerminal();
         InitWindow(pixels_x, pixels_y, windowname);
 
         font = LoadFont(fontname);
@@ -92,6 +100,7 @@ public:
     raylibsUtils(int pixels_x, int pixels_y) 
     {
 
+        clearTerminal();
         InitWindow(pixels_x, pixels_y, windowname);
 
         font = LoadFont(fontname);
@@ -187,13 +196,230 @@ public:
     }
 };
 
+class BitPlacement
+{
+private:
+
+    //ledge
+    //pawns
+    //rocky
+    //thumb
+
+    //slant
+    //price
+
+    int v; // not smaller than 1, not bigger than 40
+
+    int mask_pattern = 0;
+
+    int size;
+    int intervals;
+    int distance;
+    int step;
+    int total_finders;
+
+    // for big finders
+    int big_bound = 8;
+    bool big_finder_top_left[8][8] = {
+        {1,1,1,1,1,1,1,0},
+        {1,0,0,0,0,0,1,0},
+        {1,0,1,1,1,0,1,0},
+        {1,0,1,1,1,0,1,0},
+        {1,0,1,1,1,0,1,0},
+        {1,0,0,0,0,0,1,0},
+        {1,1,1,1,1,1,1,0},
+        {0,0,0,0,0,0,0,0}
+    };
+
+    bool big_finder_bot_left[8][8] = {
+        {0,0,0,0,0,0,0,0},
+        {1,1,1,1,1,1,1,0},
+        {1,0,0,0,0,0,1,0},
+        {1,0,1,1,1,0,1,0},
+        {1,0,1,1,1,0,1,0},
+        {1,0,1,1,1,0,1,0},
+        {1,0,0,0,0,0,1,0},
+        {1,1,1,1,1,1,1,0}
+    };
+
+    bool big_finder_top_right[8][8] = {
+        {0,1,1,1,1,1,1,1},
+        {0,1,0,0,0,0,0,1},
+        {0,1,0,1,1,1,0,1},
+        {0,1,0,1,1,1,0,1},
+        {0,1,0,1,1,1,0,1},
+        {0,1,0,0,0,0,0,1},
+        {0,1,1,1,1,1,1,1},
+        {0,0,0,0,0,0,0,0}
+    };
+    
+    // for small finders
+    int small_bound = 5;
+    bool small_finder[5][5] = {
+        {1,1,1,1,1},
+        {1,0,0,0,1},
+        {1,0,1,0,1},
+        {1,0,0,0,1},
+        {1,1,1,1,1}
+    };
+    int total_small_finders;
+
+    std::vector<std::vector<bool>> qr_container;
+    std::vector<std::vector<bool>> qr_reserved;
+
+    uint8_t placer_pos_x = 0;
+    uint8_t placer_pos_y = 0;
+
+    int getDimensions() // in modules
+    {
+        return 17 + 4 * (v);
+    };
+
+    void reserveSquare(int start_pos_x, int start_pos_y, int bound)
+    {
+
+        for(int p_y = start_pos_y; p_y < bound + start_pos_y; p_y++) {
+            for(int p_x = start_pos_x; p_x < bound + start_pos_x; p_x++) {
+                qr_reserved[p_y][p_x] = true;
+            }
+        }
+    }
+
+    void setSmallFinderLocations(int N_modules_wide)
+    {
+
+        intervals = floor(v / 7) + 1;
+        distance = 4 * v + 4;
+        step = ceil(distance / intervals / 2) * 2;
+
+        total_finders = intervals * intervals - 3;
+
+        std::vector<int> tracks {6};
+
+        // algorithm to set tracks
+        for(int index = 0; index < intervals; index++)
+        {
+
+            tracks.push_back(distance + 6 - (intervals - 1 - index) * step);
+
+        }
+
+        // algorithm to set coordinates
+        int array_size = tracks.size();
+        std::vector<int> locs = {0,0};
+
+        for(int index_y = 0; index_y < array_size; index_y++) 
+        {
+            for(int index_x = 0; index_x < array_size; index_x++) 
+            {
+                
+                // skip if at corner
+                if((index_x == 0 && index_y == 0)) {
+                    continue;
+
+                } else if((index_x == array_size-1 && index_y == 0) || (index_y == array_size-1 && index_x == 0)) {
+                    continue;
+
+                }
+
+                // reserve the found location
+                reserveSquare(tracks[index_x]-2, tracks[index_y]-2, small_bound);
+
+            }
+
+        }
+
+    };
+
+    template<typename T>
+    void print1dVector(const std::vector<T>& printable)
+    {
+
+        for(int index = 0; index < printable.size(); index++)
+        {
+            std::cout << printable[index] << " ";
+        }
+        std::cout << "\n";
+
+    };
+
+    // general function. prints vectors for debugging purposes
+    template<typename T>
+    void print2dVector(const std::vector<std::vector<T>>& printable)
+    {
+
+        for(int y = 0; y < printable.size(); y++) {
+            for(int x = 0; x < printable[y].size(); x++) {
+                std::cout << printable[y][x] << " ";
+
+            }
+            std::cout << "\n"; 
+        }
+
+    };
+
+public:
+
+    void setReserved()
+    {
+
+        // coordinates for big finder patterns
+        int top_left_x = 0;
+        int top_left_y = 0;
+
+        int bot_left_x = 0;
+        int bot_left_y = size - big_bound;
+
+        int top_right_x = size - big_bound;
+        int top_right_y = 0;
+
+        // set big finder patterns
+        reserveSquare(top_left_x, top_left_y, big_bound);
+
+        reserveSquare(bot_left_x, bot_left_y, big_bound);
+
+        reserveSquare(top_right_x, top_right_y, big_bound);
+
+        // set small finder patterns
+        if(v > 1)
+        {
+            setSmallFinderLocations(getDimensions());
+
+        };
+        
+        //reserveSquare();
+
+        // debug
+        print2dVector(qr_reserved);
+
+    };
+
+    // constructor
+    BitPlacement(int version) 
+    {
+
+        v = version;
+        size = getDimensions();
+
+        qr_container.assign(size, std::vector<bool>(size, false));
+        qr_reserved.assign(size, std::vector<bool>(size, false));
+
+        setReserved();
+
+
+
+    };
+
+};
+
 // user input, decoding and picture generating method
 // TODO: add Kanji support
+// TODO: (hopefully easy) save a qr code as png
 class QRCode
 {
 private:
 
-    raylibsUtils Utils;
+    //raylibsUtils Utils;
     BitBuffer Buffer;
 
     std::string folder = "qr_templates//";
@@ -204,6 +430,48 @@ private:
 
     std::string interleave_format = folder + "version_1.txt";
     std::vector<std::vector<std::string>> inter_format;
+
+    // hard-coded qr-code stuff
+    enum class error_corr  {L=0, Low=L, 
+                            M=1, Medium=M,
+                            Q=2, Quartile=Q, 
+                            H=3, High=H};
+                
+    enum class qr_encoding {
+        Numeric=1,
+        Alphanumeric=2,
+        Byte=4,
+        Kanji=8}; // unused
+
+    int data_bits[4][3] = {
+        {10, 12, 14}, // numeric
+        {9, 11, 13}, // alphanumeric
+        {8, 16, 16}, // byte
+        {8, 10, 12}, // kanji
+    };
+
+    uint8_t padding_0 = 236;
+    uint8_t padding_1 = 17;
+
+    // defines/handles data codewords
+    qr_encoding mode;
+
+    int N_data_bits;
+    int bits_capacity;
+    int ecc_capacity;
+
+    error_corr ec_level = error_corr::M;
+
+    uint8_t data_length;
+
+    std::vector<uint8_t> data_codewords;
+
+    // for drawing the qr-code
+    int minimum_version = 1; // not smaller than 1, not bigger than 40
+    int version = 1; // not smaller than 1, not bigger than 40
+
+    int mask_pattern = 0;
+    int module_width = 10; // sqrt(pixels) per module. QR-codes are painted in modules of pixels of a single color and size (square shape).
 
     void printRGBColored(std::array<int, 3> RGB, const char& text) 
     {
@@ -269,7 +537,7 @@ private:
     }
 
     std::vector<std::vector<std::string>> 
-    readFile(const std::string& filename, char seperator = ',', char delimiter = ';') {
+    readFile(const std::string& filename, char seperator = ',', char delimiter = '\n') {
 
         std::vector<std::vector<std::string>> data; // assume 2d array of strings to be stored in RAM
 
@@ -437,6 +705,52 @@ private:
         );
     };
 
+    void reedSolomonEncode(int ecc_count) 
+    {
+
+        std::vector<uint8_t> data = Buffer.bytes;
+
+        if (data.empty())
+            throw std::invalid_argument("Data cannot be empty");
+
+        if (ecc_count < 1 || ecc_count > 255 ||
+            data.size() + static_cast<std::size_t>(ecc_count) > 255)
+        {
+            throw std::invalid_argument("Invalid block or ECC size");
+        }
+
+        const auto generator = makeGenerator(ecc_count);
+
+        // Append zero bytes to make room for the remainder.
+        std::vector<uint8_t> work = data;
+        work.resize(data.size() + ecc_count, 0);
+
+        // Polynomial long division over GF(256).
+        for (std::size_t i = 0; i < data.size(); ++i)
+        {
+            const uint8_t factor = work[i];
+
+            if (factor == 0)
+                continue;
+
+            for (std::size_t j = 0; j < generator.size(); ++j)
+            {
+                work[i + j] ^= gfMultiply(factor, generator[j]);
+            }
+        }
+
+        // append result to given buffer
+        std::vector<uint8_t> result = std::vector<uint8_t>(
+            work.begin() + data.size(),
+            work.end());
+
+        for(uint8_t ec_byte : result)
+        {
+            Buffer.appendBits(ec_byte, 8);
+        }
+
+    };
+
     int versionSelector() {return 0;}; // TODO
 
     int getCapacityIndex()
@@ -525,6 +839,11 @@ private:
     void encodeInput(std::string_view text)
     {
 
+        N_data_bits = getDataBits(mode);
+
+        Buffer.appendBits(uint8_t(mode), 4);
+        Buffer.appendBits(data_length, N_data_bits);
+
         if(mode == qr_encoding::Numeric) {
             encodeNumeric(text, Buffer);
 
@@ -536,7 +855,7 @@ private:
 
         }
 
-    }
+    };
 
     void addTerminator()
     {
@@ -575,62 +894,10 @@ private:
 
 public:
 
-    int module_width = 10; // sqrt(pixels) per module. QR-codes are painted in modules of pixels of a single color and size (square shape).
-    enum class error_corr  {L=0, Low=L, 
-                            M=1, Medium=M,
-                            Q=2, Quartile=Q, 
-                            H=3, High=H};
-
-    error_corr ec_level = error_corr::M;
-                        
-    enum class qr_encoding {
-        Numeric=1,
-        Alphanumeric=2,
-        Byte=4,
-        Kanji=8}; // unused
-
-    qr_encoding mode;
-
-    int data_bits[4][3] = {
-        {10, 12, 14}, // numeric
-        {9, 11, 13}, // alphanumeric
-        {8, 16, 16}, // byte
-        {8, 10, 12}, // kanji
-    };
-
-    int use_data_bits;
-    int byte_capacity;
-    int bits_capacity;
-
-    int minimum_version = 1; // not smaller than 1, not bigger than 40
-    int version = 1; // not smaller than 1, not bigger than 40
-
-    int mask_pattern = 0;
-
-    uint8_t padding_0 = 236;
-    uint8_t padding_1 = 17;
-
-    uint8_t data_length;
-
-    std::vector<uint8_t> data_codewords;
-
-    QRCode()
-    {
-        info_dist = readFile(information_distribution);
-        // inter_format = readFile(interleave_format);
-
-        // TODO: parse string here
-        
-        // TODO: set version
-
-        bits_capacity = std::stoi(info_dist[getCapacityIndex()][0]) * 8; // requires version and ec level to be known
-    };
-
-    qr_encoding parseInput(std::string_view text)
+    void parseInput(std::string_view text)
     {
         
         data_length = getLengthOfInput(text);
-        
         bool numeric = true;
         bool alphanumeric = true;
 
@@ -649,14 +916,15 @@ public:
         }
 
         if (numeric) {
-            return qr_encoding::Numeric;
+            mode = qr_encoding::Numeric;
 
         } else if(alphanumeric) {
-            return qr_encoding::Alphanumeric;
+            mode = qr_encoding::Alphanumeric;
 
+        } else {
+            mode = qr_encoding::Byte;
         }
 
-        return qr_encoding::Byte;
     };
 
     int getDataBits(qr_encoding mode)
@@ -683,22 +951,9 @@ public:
         return data_bits[mode_index][bits_index];
     };
 
-    void generate(std::string text)
+    void printEncodedBytes()
     {
-
-        mode = parseInput(text); // sets mode
-
-        use_data_bits = getDataBits(mode);
-
-        Buffer.appendBits(uint8_t(mode), 4);
-        Buffer.appendBits(data_length, use_data_bits);
-
-        encodeInput(text);
-
-        addTerminator();
-
-        addPadding();
-
+        
         for(uint8_t byte : Buffer.bytes)
         {
             std::cout << std::hex
@@ -709,37 +964,43 @@ public:
                 << ' ';  
         }
 
+        std::cout << "\n";
 
+    };
 
-        // std::vector<uint8_t> data = {0x10, 0x20, 0x30, 0x40};
+    void generate(std::string text)
+    {
 
-        // const int ecc_count = 7;
+        parseInput(text); // sets mode
 
-        // const auto ecc = reedSolomonEncode(data, ecc_count);
+        encodeInput(text);
 
-        // for (uint8_t byte : ecc)
-        // {
-        //     std::cout << std::hex
-        //             << std::uppercase
-        //             << std::setw(2)
-        //             << std::setfill('0')
-        //             << static_cast<int>(byte)
-        //             << ' ';
-        // }
+        addTerminator();
 
-        std::cout << '\n';
+        addPadding();
 
+        reedSolomonEncode(ecc_capacity);
 
+        // TODO: add big/small identifier patterns
 
+        // TODO: add mask support
 
-        // std::cout << "\n";
-
-        // for (std::size_t i = 0; i < std::size(interim_converted_string); i++) {
-        //     std::cout << std::bitset<8>(interim_converted_string[i]).to_string() << " ";
-        // }
+        // TODO: add walk and encoded bit placement support
     
     };
     
+    QRCode()
+    {
+        info_dist = readFile(information_distribution);
+        // inter_format = readFile(interleave_format);
+
+        // TODO: parse string here
+        
+        // TODO: set version
+
+        bits_capacity = std::stoi(info_dist[getCapacityIndex()][0]) * 8; // bits, requires version and ec level to be known
+        ecc_capacity = std::stoi(info_dist[getCapacityIndex()][1]); // bytes
+    };
 
 };
 
